@@ -6,13 +6,10 @@ from datetime import datetime
 app = Flask(__name__)
 
 # ================= КОНФИГУРАЦИЯ =================
-# Замени на свои данные из Supabase
-DB_URL = "postgresql://postgres.ojircwgpnhcxpwzwjmpw:Trotil11---@aws-1-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
-# Или используй переменные окружения:
-# DB_URL = os.environ.get("DATABASE_URL")
-
-PAYPALYCH_SHOP_ID = "твой_shop_id_из_пайпалича"
-PAYPALYCH_API_TOKEN = "твой_api_token_из_пайпалича"
+# Render берёт из переменных окружения автоматически
+DB_URL = os.environ.get("DATABASE_URL")
+PAYPALYCH_SHOP_ID = os.environ.get("PAYPALYCH_SHOP_ID")
+PAYPALYCH_API_TOKEN = os.environ.get("PAYPALYCH_API_TOKEN")
 
 # Соотношение цена → токены
 PACKAGES = {
@@ -32,7 +29,6 @@ def add_tokens_to_user(user_id, tokens):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Обновляем баланс (предполагаю, таблица messages, столбец tokens)
     cur.execute("""
         UPDATE messages 
         SET tokens = COALESCE(tokens, 0) + %s 
@@ -83,7 +79,7 @@ def update_payment_status(order_id, status):
     cur.close()
     conn.close()
     
-    return result  # (user_id, tokens)
+    return result
 
 def get_payment(order_id):
     """Проверяет существование платежа"""
@@ -100,20 +96,15 @@ def get_payment(order_id):
 # ================= ВЕБХУК PAYPALYCH =================
 @app.route('/webhook', methods=['POST'])
 def paypalych_webhook():
-    """
-    Обработчик уведомлений от PayPalych
-    PayPalych шлёт сюда POST когда платёж успешен/неуспешен
-    """
     data = request.json or request.form.to_dict()
     
     print(f"📩 Получен вебхук: {data}")
     
-    # Проверка обязательных полей
     if not data or 'order_id' not in data:
         return jsonify({"error": "No order_id"}), 400
     
     order_id = data.get('order_id')
-    status = data.get('status')  # 'success', 'failed', 'pending'
+    status = data.get('status')
     amount = int(data.get('amount', 0))
     
     # Проверяем, не обработали ли уже
@@ -129,7 +120,7 @@ def paypalych_webhook():
         return jsonify({"error": "Invalid order_id format"}), 400
     
     # Определяем сколько токенов
-    tokens = PACKAGES.get(amount, amount)  # Если сумма не в списке — 1:1
+    tokens = PACKAGES.get(amount, amount)
     
     # Если платёж новый — сохраняем
     if not existing:
@@ -143,9 +134,6 @@ def paypalych_webhook():
             user_id, tokens = payment_info
             new_balance = add_tokens_to_user(user_id, tokens)
             print(f"✅ Начислено {tokens} токенов пользователю {user_id}. Новый баланс: {new_balance}")
-            
-            # Здесь можно добавить отправку уведомления в Telegram
-            # send_telegram_notification(user_id, f"💰 Зачислено {tokens} токенов!")
     
     return jsonify({"status": "ok"}), 200
 
@@ -155,5 +143,6 @@ def health_check():
     return "Webhook server is running!", 200
 
 if __name__ == '__main__':
-    # Для локального тестирования
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Render сам задаёт порт через переменную окружения
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
