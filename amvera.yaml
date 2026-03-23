@@ -1,0 +1,9 @@
+name: paypalych-webhook
+runtime: python
+version: 3.11
+build:
+  commands:
+    - pip install -r requirements.txt
+run:
+  command: gunicorn webhook:app --bind 0.0.0.0:8000
+  port: 8000
